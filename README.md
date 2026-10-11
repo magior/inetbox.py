@@ -251,6 +251,7 @@ The following service-specific settings can be used in the `miqro.yml` file besi
 - `debug_app` (default: False) - Enable debugging for the application layer.
 - `debug_lin` (default: False) - Enable debugging for the LIN layer.
 - `debug_protocol` (default: False) - Enable debugging for the protocol layer.
+- `init_request_interval` (default: 0 = off) - Interval in seconds at which the service asks the CP Plus to send all its status buffers again (an empty "init request", as other iNet Box projects do at start-up). Needed for a **CP Plus C3**: it sends the status buffers only at registration or while its display is active, and never re-sends the timer after a write; without it the service gets no data while the panel is asleep and ends with "Taking too long to commit updates" after a timer write. A request is also sent after each batch of changes (`set/...`) and repeated every 20 s while the changes wait for the CP Plus. A value around 60 is reasonable. Tested on a C3.00.00 with a Combi 6 H5.00.00.
 - `ha_optimistic` (default: False) - Enables MQTT optimistic mode for Home Assistant entities via auto discovery. When enabled, commands are assumed successful even if no confirmation is received from the device.
 
 ### Installing the Systemd Service

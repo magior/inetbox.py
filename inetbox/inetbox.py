@@ -116,6 +116,10 @@ class InetboxLINProtocol:
             send_buffer = self.app._get_status_buffer_for_writing()
 
             if send_buffer is None:
+                # no command to send (or not yet possible): fetch the init request, if any
+                send_buffer = self.app._get_init_request_buffer()
+
+            if send_buffer is None:
                 self.log.debug("Not responding, waiting for status message first!")
                 return
 
@@ -151,8 +155,8 @@ class InetboxLINProtocol:
         return bytes(
             [
                 # FE: app waits for updates from CP Plus
-                # FF: app has an update ready for CP plus
-                0xFF if self.app.updates_to_send else 0xFE,
+                # FF: app has an update (or an init request) ready for CP plus
+                0xFF if self.app.updates_to_send or self.app.init_request_pending else 0xFE,
                 0xFF,
                 0xFF,
                 0xFF,
@@ -444,6 +448,12 @@ class InetboxApp:
 
     updates_to_send = {}
 
+    # Empty "init request" buffer (00 0A): asks the CP Plus to send all status buffers again.
+    # The CP Plus C3 only sends them at registration, so without it a C3 stays silent while its
+    # display is off, and timer writes are never read back.
+    TYPE_INIT_REQUEST = 0x0A
+    init_request_pending = False
+
     display_status = {}
 
     lang = "none"
@@ -644,6 +654,26 @@ class InetboxApp:
             + binary_buffer_contents
         )
         self.log.debug(f"Sending status buffer: {format_bytes(output)}")
+        return output
+
+    def request_init(self):
+        self.init_request_pending = True
+
+    def _get_init_request_buffer(self):
+        if not self.init_request_pending:
+            return None
+
+        self.status["_command_counter"] = (self.status["_command_counter"] + 1) % 0xFF
+        counter = self.status["_command_counter"]
+        checksum = calculate_checksum(
+            self.STATUS_BUFFER_PREAMBLE[self.STATUS_HEADER_CHECKSUM_START :]
+            + bytes([0, self.TYPE_INIT_REQUEST, counter])
+        )
+        self.init_request_pending = False
+        output = self.STATUS_BUFFER_PREAMBLE + bytes(
+            [0, self.TYPE_INIT_REQUEST, counter, checksum]
+        )
+        self.log.debug(f"Sending init request: {format_bytes(output)}")
         return output
 
     def get_status(self, key, default=None):

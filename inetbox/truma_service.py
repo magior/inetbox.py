@@ -25,11 +25,15 @@ class TrumaService(miqro.Service):
     TRUMA_DEFAULT_TEMP = 5
     TRUMA_MAX_TIMEDELTA = timedelta(minutes=1)
     MAX_UPDATE_WAIT = timedelta(seconds=60)
+    # while a commit waits for the CP Plus, the init request is repeated well within
+    # MAX_UPDATE_WAIT (a C3 takes about 14 s to re-send all its status buffers)
+    INIT_REQUEST_RETRY = timedelta(seconds=20)
 
     updates_buffer = {}
     last_update_buffer_change = None
     started_commit_updates = None
     last_target_temp_room = None
+    last_init_request = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -83,6 +87,15 @@ class TrumaService(miqro.Service):
         self.updates_buffer_time = timedelta(
             seconds=self.service_config.get("updates_buffer_time", 1)
         )
+
+        # 0 = never send init requests (default); see README
+        self.init_request_interval = timedelta(
+            seconds=float(self.service_config.get("init_request_interval", 0))
+        )
+        if self.init_request_interval < timedelta(0):
+            raise ValueError(
+                f"Invalid init_request_interval: {self.init_request_interval.total_seconds()}"
+            )
 
         self.inetapp = InetboxApp(debug_app, self.lang)
         self.inetprotocol = InetboxLINProtocol(self.inetapp, debug_protocol)
@@ -313,6 +326,26 @@ class TrumaService(miqro.Service):
 
         self.updates_buffer = {}
         self.last_update_buffer_change = None
+        # read the result back (some CP Plus versions do not send it by themselves)
+        self.request_init()
+
+    def request_init(self):
+        if self.init_request_interval:
+            self.last_init_request = datetime.now()
+            self.inetapp.request_init()
+
+    @miqro.loop(seconds=1)
+    def request_init_periodically(self):
+        if not self.init_request_interval:
+            return
+        interval = self.init_request_interval
+        if self.started_commit_updates is not None:
+            interval = min(interval, self.INIT_REQUEST_RETRY)
+        if (
+            self.last_init_request is None
+            or datetime.now() - self.last_init_request >= interval
+        ):
+            self.request_init()
 
     @miqro.loop(seconds=0.3)
     def send_update_status(self):

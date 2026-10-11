@@ -147,6 +147,9 @@ class TrumaService(miqro.Service):
     @miqro.handle("set/#")
     def handle_set_message(self, msg, topic):
         self.log.info(f"Received set message {msg} on topic {topic}")
+        if topic.startswith("wall_time") and not self.can_set_time():
+            return
+
         # Instead of pushing updates to inetapp immediately, we collect them and
         # send them all at once. This is to avoid sending multiple updates to the
         # same value in a short time frame and also helps with values that depend
@@ -387,7 +390,21 @@ class TrumaService(miqro.Service):
 
         self.set_time()
 
+    def can_set_time(self):
+        # The clock buffer can only be written once the CP Plus has sent it (0A 15).
+        # A CP Plus C3 never does: a queued time would wait forever, and a
+        # set/wall_time would end with "Taking too long to commit updates".
+        if self.inetapp.COMMAND_TIME.can_send_updates:
+            return True
+        msg = "Cannot set the time: the CP Plus has not sent its clock (a CP Plus C3 never does)."
+        self.log.error(msg)
+        self.publish("error", msg)
+        return False
+
     def set_time(self):
+        if not self.can_set_time():
+            return
+
         current_time = datetime.now()
 
         if not self.service_config.get("timezone_override", None):

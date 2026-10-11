@@ -233,6 +233,8 @@ There are three ways to update the clock on the Truma panel:
 - **Automatically, externally triggered:** Send any message to `service/truma/update_time` to update the time on the Truma panel to the current system time of the platform running the service. If needed, the timezone can be overridden by using the setting `timezone_override` in the service settings to a valid timezone name (e.g., `Europe/Berlin`).
 - **Automatically, every 24 hours:** Set the setting `set_time` to `true` in the service settings to update the time on the Truma panel to the current system time every 24 hours.
 
+The time can only be set after the CP Plus has sent its clock; until then the requests above are refused with a message on the `error` topic. A CP Plus C3 never sends its clock, so its time cannot be set through the iNet Box.
+
 Alternatively, you can 
 
 ### Service Settings
